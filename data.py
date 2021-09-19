@@ -8,7 +8,7 @@ LABELS = {'HEALTHY': 0, 'SICK': 1}
 
 class BScansGenerator(Dataset):
     def __init__(self, control_dir, study_dir):
-        self.bscans = []
+        self.bscans = torch.empty(0)
         self.parse_files(control_dir, study_dir)
 
     def parse_files(self, control_dir, study_dir):
@@ -23,7 +23,9 @@ class BScansGenerator(Dataset):
             print('HEALTHY:{}'.format(sample))
             if not Path.is_dir(sample):
                 for volume in E2E(sample).read_oct_volume():
-                    # TODO: Transform into pytorch tensor
+                    # TODO: Transform volume into pytorch tensor
+                    # TODO: repeat label to same dimensions as volume
+                    # TODO: bscans should be a tuple of (tensor scans, tensor labels) of same length along dim=0
                     for scan in volume.volume:
                         # TODO: Very inefficient. Somehow use extend instead (or Pytorch tensor form)
                         self.bscans.append((scan, LABELS['HEALTHY']))
