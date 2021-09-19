@@ -1,3 +1,4 @@
+import torch
 from torch.utils.data import Dataset
 from pathlib import Path
 from oct_converter.readers import E2E
@@ -35,6 +36,25 @@ class BScansGenerator(Dataset):
                     for scan in volume.volume:
                         # TODO: Very inefficient. Somehow use extend instead (or Pytorch tensor form)
                         self.bscans.append((scan, LABELS['SICK']))
+
+    def make_weights_for_balanced_classes(self):
+        num_labels = len(LABELS)
+        num_scans = len(self)
+
+        count = [0] * num_labels
+        for scan, label in self.bscans:
+            count[label] += 1
+
+        weight_per_label = [0.] * len(LABELS)
+        N = float(num_scans)
+        for idx in LABELS.values():
+            weight_per_label[idx] = N / float(count[idx])
+
+        weights = [0] * num_scans
+        for idx, (_, label) in enumerate(self.bscans):
+            weights[idx] = weight_per_label[label]
+
+        return torch.DoubleTensor(weights)
 
     def __len__(self):
         return len(self.bscans)
