@@ -22,7 +22,11 @@ class BScansGenerator(Dataset):
         for sample in list(Path(control_dir).rglob("*.E2E")):
             print('HEALTHY:{}'.format(sample))
             if not Path.is_dir(sample):
-                for volume in E2E(sample).read_oct_volume():
+                for volume in E2E(sample).read_oct_volume()
+                    import pdb; pdb.set_trace()
+                    volume_tensor = torch.tensor(volume)
+                    self.labels = torch.tensor(LABELS['HEALTHY']).repeat(volume_tensor.shape[0])
+                    self.bscans.cat(volume_tensor)
                     # TODO: Transform volume into pytorch tensor
                     # TODO: repeat label to same dimensions as volume
                     # TODO: bscans should be a tuple of (tensor scans, tensor labels) of same length along dim=0
