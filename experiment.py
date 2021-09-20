@@ -19,15 +19,17 @@ class Experiment:
             setattr(self, key, value)
 
         # train
-        self.train_dataset = BScansGenerator(control_dir=self.train_path['control'], study_dir=self.train_path['study'])
-        import pdb; pdb.set_trace()
+        self.train_dataset = BScansGenerator(control_dir=self.train_path['control'], study_dir=self.train_path['study'],
+                                             input_size=self.input_size)
         train_weights = self.train_dataset.make_weights_for_balanced_classes()
         train_sampler = torch.utils.data.sampler.WeightedRandomSampler(train_weights, len(train_weights))
-        self.train_loader = torch.utils.data.DataLoader(dataset=self.train_dataset,
-                                                        batch_size=self.batch_size, sampler=train_sampler)
+        self.train_loader = torch.utils.data.DataLoader(dataset=self.train_dataset, batch_size=self.batch_size,
+                                                        sampler=train_sampler)
         # test
-        self.test_dataset = BScansGenerator(control_dir=self.test_path['control'], study_dir=self.test_path['study'])
-        self.test_loader = torch.utils.data.DataLoader(dataset=self.test_dataset, batch_size=self.batch_size, shuffle=True)
+        self.test_dataset = BScansGenerator(control_dir=self.test_path['control'], study_dir=self.test_path['study'],
+                                            input_size=self.input_size)
+        self.test_loader = torch.utils.data.DataLoader(dataset=self.test_dataset, batch_size=self.batch_size,
+                                                       shuffle=True)
 
         self.criterion = torch.nn.functional.cross_entropy
         self.model, self.optimizer = get_model_and_optim(model_name=self.model_name, lr=self.lr, device=self.device,
