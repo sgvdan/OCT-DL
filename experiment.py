@@ -20,6 +20,7 @@ class Experiment:
 
         # train
         self.train_dataset = BScansGenerator(control_dir=self.train_path['control'], study_dir=self.train_path['study'])
+        import pdb; pdb.set_trace()
         train_weights = self.train_dataset.make_weights_for_balanced_classes()
         train_sampler = torch.utils.data.sampler.WeightedRandomSampler(train_weights, len(train_weights))
         self.train_loader = torch.utils.data.DataLoader(dataset=self.train_dataset,
