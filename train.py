@@ -69,10 +69,11 @@ def train_loop(model, criterion, optimizer, device, images, labels, mode="Train"
 
     # Run the model on the input batch
     pred_scores = model(images)
+    # TODO: pred_scores are float, they need to be binary at the end
 
     # Calculate the accuracy for this batch
     for label, value in data.LABELS.items():
-        accuracy = calc_accuracy(pred_scores, labels, specific_label=label)
+        accuracy = calc_accuracy(pred_scores, labels, specific_label=value)
         wandb.log({"{mode}/accuracy/{label}".format(mode=mode, label=label): accuracy})
 
     if mode == "Train":
