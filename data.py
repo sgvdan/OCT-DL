@@ -26,21 +26,21 @@ class BScansGenerator(Dataset):
 
         resize_volume = transforms.Resize(input_size)
 
-        print("Load Control")
+        print("Load Control", flush=True)
         for sample in tqdm(list(Path(control_dir).rglob("*.E2E"))):
             if not Path.is_dir(sample):
                 for volume in E2E(sample).read_oct_volume():
-                    volume_tensor = resize_volume(torch.tensor(volume.volume))
+                    # TODO: change this to pytorch transformations
+                    volume_tensor = resize_volume(torch.tensor(volume.volume)).unsqueeze(1).expand(-1, 3, -1, -1) # Copying it to hold the same value throught all RGB dimensions
                     labels_tensor = torch.tensor(LABELS['HEALTHY']).repeat(volume_tensor.shape[0])
                     self.labels = torch.cat((self.labels, labels_tensor))
                     self.b_scans = torch.cat((self.b_scans, volume_tensor))
 
-        print("Load Study")
+        print("Load Study", flush=True)
         for sample in tqdm(list(Path(study_dir).rglob("*.E2E"))):
-            print('SICK:{}'.format(sample))
             if not Path.is_dir(sample):
                 for volume in E2E(sample).read_oct_volume():
-                    volume_tensor = resize_volume(torch.tensor(volume.volume))
+                    volume_tensor = resize_volume(torch.tensor(volume.volume)).unsqueeze(1).expand(-1, 3, -1, -1)
                     labels_tensor = torch.tensor(LABELS['SICK']).repeat(volume_tensor.shape[0])
                     self.labels = torch.cat((self.labels, labels_tensor))
                     self.b_scans = torch.cat((self.b_scans, volume_tensor))
@@ -62,7 +62,7 @@ class BScansGenerator(Dataset):
         for idx, label in enumerate(self.labels):
             weights[idx] = weight_per_label[int(label)]
 
-        return torch.DoubleTensor(weights)
+        return torch.FloatTensor(weights)
 
     def __len__(self):
         return len(self.b_scans)

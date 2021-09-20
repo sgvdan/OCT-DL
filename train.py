@@ -65,7 +65,7 @@ def train_loop(model, criterion, optimizer, device, images, labels, mode="Train"
         raise RuntimeError()
 
     # Move to device
-    images, labels = images.to(device=device), labels.to(device=device)
+    images, labels = images.to(device=device, dtype=torch.float), labels.to(device=device)
 
     # Run the model on the input batch
     pred_scores = model(images)
