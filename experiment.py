@@ -56,12 +56,13 @@ class Experiment:
     def eval_model(self):
         accuracies = []
         weights = []
-        for (test_images, (test_tumor_segmentations, test_tumor_types)) in self.test_loader:
+        for (test_images, test_labels) in self.test_loader:
             # test accuracy of batch
             accuracy = train_loop(model=self.model, criterion=self.criterion,
                                   optimizer=self.optimizer, device=self.device,
-                                  images=test_images, tumor_types=test_tumor_types, mode="Test")
+                                  images=test_images, labels=test_labels, mode="Test")
             accuracies.append(accuracy)
             weights.append(test_images.size(0))
+        import pdb; pdb.set_trace()
         test_accuracy = sum([accuracy * weight for accuracy, weight in zip(accuracies, weights)]) / sum(weights)
         return round(test_accuracy, 2)

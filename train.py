@@ -65,16 +65,16 @@ def train_loop(model, criterion, optimizer, device, images, labels, mode="Train"
         raise RuntimeError()
 
     # Move to device
-    images, labels = images.to(device=device, dtype=torch.float), labels.to(device=device)
+    images, labels = images.to(device=device, dtype=torch.float), labels.to(device=device, dtype=torch.int64)
 
     # Run the model on the input batch
     pred_scores = model(images)
-    # TODO: pred_scores are float, they need to be binary at the end
 
     # Calculate the accuracy for this batch
     for label, value in data.LABELS.items():
         accuracy = calc_accuracy(pred_scores, labels, specific_label=value)
         wandb.log({"{mode}/accuracy/{label}".format(mode=mode, label=label): accuracy})
+    accuracy = calc_accuracy(pred_scores, labels, specific_label=None)
 
     if mode == "Train":
         # Calculate the loss for this batch
@@ -85,5 +85,4 @@ def train_loop(model, criterion, optimizer, device, images, labels, mode="Train"
         backward(loss)
         optimizer.step()
 
-    accuracy = calc_accuracy(pred_scores, labels, specific_label=None)
     return accuracy
