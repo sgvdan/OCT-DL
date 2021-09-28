@@ -75,6 +75,7 @@ def train_loop(model, criterion, optimizer, device, images, labels, mode="Train"
         accuracy = calc_accuracy(pred_scores, labels, specific_label=value)
         wandb.log({"{mode}/accuracy/{label}".format(mode=mode, label=label): accuracy})
     accuracy = calc_accuracy(pred_scores, labels, specific_label=None)
+    wandb.log({"{mode}/accuracy".format(mode=mode): accuracy})
 
     if mode == "Train":
         # Calculate the loss for this batch

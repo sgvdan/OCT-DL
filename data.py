@@ -5,6 +5,9 @@ from torchvision import transforms
 from pathlib import Path
 from oct_converter.readers import E2E
 from tqdm import tqdm
+import math
+import util
+import wandb
 
 LABELS = {'HEALTHY': 0, 'SICK': 1}
 
@@ -13,39 +16,46 @@ class BScansGenerator(Dataset):
     def __init__(self, control_dir, study_dir, input_size):
         self.b_scans = torch.empty(0)
         self.labels = torch.empty(0)
-        self.parse_files(control_dir, study_dir, input_size)
-
-    def parse_files(self, control_dir, study_dir, input_size):
-        """
-        Appends B-Scans of control and study directories,
-        labeled as HEALTHY and SICK correspondingly.
-        :param control_dir: path to control directory
-        :param study_dir: path to study directory
-        :return: None
-        """
-
-        resize_volume = transforms.Resize(input_size)
 
         print("Load Control", flush=True)
-        for sample in tqdm(list(Path(control_dir).rglob("*.E2E"))):
+        self.parse_files(control_dir, LABELS['HEALTHY'], input_size)
+        print("Load Study", flush=True)
+        self.parse_files(study_dir, LABELS['SICK'], input_size)
+
+    def parse_files(self, path, label, input_size):
+        """
+        Appends B-Scans of a given directory recursively, labeled with the given label
+        :param path: path to data directory
+        :param label: the label to assign to all parsed B-Scans
+        :param input_size: the size to which the data should be fitted
+
+        :return: None
+        """
+        resize_volume = transforms.Resize(input_size)
+
+        for sample in list(Path(path).rglob("*.E2E")):
             if not Path.is_dir(sample):
                 for volume in E2E(sample).read_oct_volume():
                     # TODO: change this to pytorch transformations
-                    volume_tensor = resize_volume(torch.tensor(volume.volume)).unsqueeze(1).expand(-1, 3, -1, -1) # Copying it to hold the same value throught all RGB dimensions
-                    labels_tensor = torch.tensor(LABELS['HEALTHY']).repeat(volume_tensor.shape[0])
-                    self.labels = torch.cat((self.labels, labels_tensor))
-                    self.b_scans = torch.cat((self.b_scans, volume_tensor))
 
-        print("Load Study", flush=True)
-        for sample in tqdm(list(Path(study_dir).rglob("*.E2E"))):
-            if not Path.is_dir(sample):
-                for volume in E2E(sample).read_oct_volume():
-                    volume_tensor = resize_volume(torch.tensor(volume.volume)).unsqueeze(1).expand(-1, 3, -1, -1)
-                    labels_tensor = torch.tensor(LABELS['SICK']).repeat(volume_tensor.shape[0])
+                    # Center around the Fovea
+                    tomograms_count = len(volume.volume)
+                    start = max(0, math.ceil(tomograms_count/2) - 2)
+                    end = min(math.ceil(tomograms_count/2) + 5, tomograms_count)  # python rules: EXCLUDING last one
+
+                    volume_tensor = resize_volume(torch.tensor(volume.volume[start:end])).unsqueeze(1).expand(-1, 3, -1, -1) # Copying it to hold the same value throught all RGB dimensions
+                    labels_tensor = torch.tensor(label).repeat(volume_tensor.shape[0])
                     self.labels = torch.cat((self.labels, labels_tensor))
                     self.b_scans = torch.cat((self.b_scans, volume_tensor))
+                    util.imshow(volume.volume[start], "{0} START - {1}:{2}".format(label, sample, volume.patient_id))
+                    util.imshow(volume.volume[end - 1], "{0} END - {1}:{2}".format(label, sample, volume.patient_id))
+
+                    # TODO: Log images in W&B (for some reason it doesn't work)
+                    wandb.log({'{0}/START'.format(label): [wandb.Image(volume.volume[start])],
+                               '{0}/END'.format(label): [wandb.Image(volume.volume[end - 1])]})
 
     def make_weights_for_balanced_classes(self):
+        # TODO: Change this to go through directories and decide weights by that
         num_labels = len(LABELS)
         num_scans = len(self)
 

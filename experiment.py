@@ -63,6 +63,5 @@ class Experiment:
                                   images=test_images, labels=test_labels, mode="Test")
             accuracies.append(accuracy)
             weights.append(test_images.size(0))
-        import pdb; pdb.set_trace()
         test_accuracy = sum([accuracy * weight for accuracy, weight in zip(accuracies, weights)]) / sum(weights)
         return round(test_accuracy, 2)
