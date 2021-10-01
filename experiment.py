@@ -1,6 +1,6 @@
 import torch
 from train import train, train_loop
-from data import BScansGenerator
+from data import BScansGenerator, Cache
 from network import get_model_and_optim, load_best_state
 import wandb
 

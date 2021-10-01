@@ -16,17 +16,29 @@ LABELS = {'HEALTHY': 0, 'SICK': 1}
 class Cache:
     def __init__(self, cache_path):
         self.cache_path = Path(cache_path)
-        self.cache_fs_path = cache_path / '.cache_fs'
+        self.cache_fs_path = self.cache_path / '.cache_fs'
+        self.labels_path = self.cache_path / '.labels'
 
+        # Create cache directory
+        if not self.cache_path.exists():
+            self.cache_path.mkdir()
+
+        # Retrieve file-system dictionary
         if self.cache_fs_path.exists():
             with open(self.cache_fs_path, 'rb') as file:
                 self.cache_fs = pickle.load(file)
         else:
             self.cache_fs = {}
 
+        # Retrieve labels
+        if self.labels_path.exists():
+            with open(self.labels_path, 'rb') as file:
+                self.labels = pickle.load(file)
+        else:
+            self.labels = {}
+
     def buildup_data(self, path, label, transformations):
         counter = len(self)
-        labels = {}
         for sample in tqdm(list(Path(path).rglob("*.E2E"))):
             if not Path.is_dir(sample):
                 for volume in E2E(sample).read_oct_volume():
@@ -40,9 +52,9 @@ class Cache:
                     for idx in range(start, end):
                         try:
                             # TODO: Incorporate all transformations to 'transformations'
-                            tomogram = transformations(torch.tensor(volume.volume[idx])).unsqueeze(1).expand(-1, 3, -1, -1)
+                            tomogram = transformations(torch.tensor(volume.volume[idx]).unsqueeze(0).expand(3, -1, -1))
                             self[counter] = tomogram
-                            labels[counter] = label
+                            self.labels[counter] = label
                             counter += 1
                         except:
                             print("Ignored volume {0} in sample {1} - type match error".format(idx, sample))
@@ -54,18 +66,16 @@ class Cache:
                     wandb.log({'label{0}-start'.format(label): [wandb.Image(volume.volume[start])],
                                'label{0}-end'.format(label): [wandb.Image(volume.volume[end - 1])]})
 
-        self['labels'] += labels
-
     def get_labels(self):
-        return self['labels']
+        return self.labels
 
     def __getitem__(self, idx):
         with open(self.cache_fs[idx], 'rb') as file:
             return pickle.load(file)
 
     def __setitem__(self, idx, value):
-        item_path = self.cache_path / idx
-        with open(item_path, 'wb') as file:
+        item_path = self.cache_path / str(idx)
+        with open(item_path, 'wb+') as file:
             pickle.dump(value, file)
 
         self.cache_fs[idx] = item_path
@@ -74,36 +84,25 @@ class Cache:
         return len(self.cache_fs)
 
     def __del__(self):
-        with open(self.cache_fs_path, 'wb') as file:
+        with open(self.cache_fs_path, 'wb+') as file:
             pickle.dump(self.cache_fs, file)
+
+        with open(self.labels_path, 'wb+') as file:
+            pickle.dump(self.labels, file)
 
 
 class BScansGenerator(Dataset):
-    def __init__(self, cache):
+    def __init__(self, control_dir, study_dir, input_size):
         self.b_scans = torch.empty(0)
         self.labels = torch.empty(0)
 
-        self.cache = cache
-        self.labels = cache.get_labels()
+        self.cache = Cache('./cache')
+        print("Buildup Control Cache", flush=True)
+        self.cache.buildup_data(control_dir, torch.tensor(LABELS['HEALTHY']), transforms.Resize(input_size))
+        print("Buildup Study Cache", flush=True)
+        self.cache.buildup_data(study_dir, torch.tensor(LABELS['SICK']), transforms.Resize(input_size))
 
-        # TODO buildup_data on the outside (experiment's module) - make sure resize transformation is there
-        # feed it to BScans Generator
-        # work with BSCansGenerator
-        print("Load Control", flush=True)
-        self.parse_files(control_dir, LABELS['HEALTHY'], input_size)
-        print("Load Study", flush=True)
-        self.parse_files(study_dir, LABELS['SICK'], input_size)
-
-    def parse_files(self, path, label, input_size):
-        """
-        Appends B-Scans of a given directory recursively, labeled with the given label
-        :param path: path to data directory
-        :param label: the label to assign to all parsed B-Scans
-        :param input_size: the size to which the data should be fitted
-
-        :return: None
-        """
-        resize_volume = transforms.Resize(input_size)
+        self.labels = self.cache.get_labels()
 
     def make_weights_for_balanced_classes(self):
         num_labels = len(LABELS)
