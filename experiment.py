@@ -19,6 +19,7 @@ class Experiment:
             setattr(self, key, value)
 
         # train
+        print("Load train dataset")
         self.train_dataset = BScansGenerator(control_dir=self.train_path['control'], study_dir=self.train_path['study'],
                                              input_size=self.input_size)
         train_weights = self.train_dataset.make_weights_for_balanced_classes()
@@ -26,6 +27,7 @@ class Experiment:
         self.train_loader = torch.utils.data.DataLoader(dataset=self.train_dataset, batch_size=self.batch_size,
                                                         sampler=train_sampler)
         # test
+        print("Load test dataset")
         self.test_dataset = BScansGenerator(control_dir=self.test_path['control'], study_dir=self.test_path['study'],
                                             input_size=self.input_size)
         self.test_loader = torch.utils.data.DataLoader(dataset=self.test_dataset, batch_size=self.batch_size,

@@ -5,6 +5,7 @@ from torchvision import transforms
 from pathlib import Path
 from oct_converter.readers import E2E
 from tqdm import tqdm
+import numpy as np
 import math
 import util
 import wandb
@@ -33,26 +34,29 @@ class BScansGenerator(Dataset):
         """
         resize_volume = transforms.Resize(input_size)
 
-        for sample in list(Path(path).rglob("*.E2E")):
+        for sample in tqdm(list(Path(path).rglob("*.E2E"))):
             if not Path.is_dir(sample):
                 for volume in E2E(sample).read_oct_volume():
                     # TODO: change this to pytorch transformations
 
                     # Center around the Fovea
                     tomograms_count = len(volume.volume)
-                    start = max(0, math.ceil(tomograms_count/2) - 2)
-                    end = min(math.ceil(tomograms_count/2) + 5, tomograms_count)  # python rules: EXCLUDING last one
+                    start = max(0, math.ceil(tomograms_count/2) - 1)
+                    end = min(math.ceil(tomograms_count/2) + 4, tomograms_count)  # python rules: EXCLUDING last one
+                    try:
+                        volume_tensor = resize_volume(torch.tensor(volume.volume[start:end])).unsqueeze(1).expand(-1, 3, -1, -1) # Copying it to hold the same value throught all RGB dimensions
+                    except:
+                        print("Ignored volume in sample {0} since its type doesn't match tensors".format(sample))
+                        continue
 
-                    volume_tensor = resize_volume(torch.tensor(volume.volume[start:end])).unsqueeze(1).expand(-1, 3, -1, -1) # Copying it to hold the same value throught all RGB dimensions
                     labels_tensor = torch.tensor(label).repeat(volume_tensor.shape[0])
                     self.labels = torch.cat((self.labels, labels_tensor))
                     self.b_scans = torch.cat((self.b_scans, volume_tensor))
-                    util.imshow(volume.volume[start], "{0} START - {1}:{2}".format(label, sample, volume.patient_id))
-                    util.imshow(volume.volume[end - 1], "{0} END - {1}:{2}".format(label, sample, volume.patient_id))
+                    # util.imshow(volume.volume[start], "{0} START - {1}:{2}".format(label, sample, volume.patient_id))
+                    # util.imshow(volume.volume[end - 1], "{0} END - {1}:{2}".format(label, sample, volume.patient_id))
 
-                    # TODO: Log images in W&B (for some reason it doesn't work)
-                    wandb.log({'{0}/START'.format(label): [wandb.Image(volume.volume[start])],
-                               '{0}/END'.format(label): [wandb.Image(volume.volume[end - 1])]})
+                    wandb.log({'label{0}-start'.format(label): [wandb.Image(volume.volume[start])],
+                               'label{0}-end'.format(label): [wandb.Image(volume.volume[end - 1])]})
 
     def make_weights_for_balanced_classes(self):
         # TODO: Change this to go through directories and decide weights by that
