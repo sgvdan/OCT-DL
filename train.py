@@ -80,10 +80,10 @@ def train_loop(model, criterion, optimizer, device, images, labels, mode="Train"
     if mode == "Train":
         # Calculate the loss for this batch
         loss = criterion(pred_scores, labels)
-        wandb.log({"{mode}/loss".format(mode=mode): loss})
+        wandb.log({"Train/loss": loss})
         # Update gradients
         optimizer.zero_grad()
-        backward(loss)
+        loss.backward()
         optimizer.step()
 
     return accuracy

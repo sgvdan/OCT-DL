@@ -1,7 +1,11 @@
 import torch
+
+import data
 from train import train, train_loop
 from data import BScansGenerator, Cache
-from network import get_model_and_optim, load_best_state
+from network import get_model_and_optim
+from torchvision import transforms
+
 import wandb
 
 wandb.login()
@@ -18,21 +22,22 @@ class Experiment:
         for key, value in config.items():
             setattr(self, key, value)
 
-        # train
+        train_cache, test_cache = self.buildup_data()
+
+        # Train Dataset
         print("Load train dataset")
-        self.train_dataset = BScansGenerator(control_dir=self.train_path['control'], study_dir=self.train_path['study'],
-                                             input_size=self.input_size)
+        self.train_dataset = BScansGenerator(train_cache)
         train_weights = self.train_dataset.make_weights_for_balanced_classes()
         train_sampler = torch.utils.data.sampler.WeightedRandomSampler(train_weights, len(train_weights))
         self.train_loader = torch.utils.data.DataLoader(dataset=self.train_dataset, batch_size=self.batch_size,
                                                         sampler=train_sampler)
-        # test
+        # Test Dataset
         print("Load test dataset")
-        self.test_dataset = BScansGenerator(control_dir=self.test_path['control'], study_dir=self.test_path['study'],
-                                            input_size=self.input_size)
+        self.test_dataset = BScansGenerator(test_cache)
         self.test_loader = torch.utils.data.DataLoader(dataset=self.test_dataset, batch_size=self.batch_size,
                                                        shuffle=True)
 
+        # Set Model, Optimizer & Loss
         self.criterion = torch.nn.functional.cross_entropy
         self.model, self.optimizer = get_model_and_optim(model_name=self.model_name, lr=self.lr, device=self.device,
                                                          load_best_model=False)
@@ -67,3 +72,20 @@ class Experiment:
             weights.append(test_images.size(0))
         test_accuracy = sum([accuracy * weight for accuracy, weight in zip(accuracies, weights)]) / sum(weights)
         return round(test_accuracy, 2)
+
+    def buildup_data(self):
+        """
+        :return: (train cache, test_cache)
+        """
+        train_cache = Cache(self.cache_path, 'train')
+        test_cache = Cache(self.cache_path, 'test')
+
+        if self.refresh_cache:
+            transformations = transforms.Resize(self.input_size)
+            data.buildup_cache(train_cache, self.train_path['control'], data.LABELS['HEALTHY'], transformations)
+            data.buildup_cache(train_cache, self.train_path['study'], data.LABELS['SICK'], transformations)
+
+            data.buildup_cache(test_cache, self.test_path['control'], data.LABELS['HEALTHY'], transformations)
+            data.buildup_cache(test_cache, self.test_path['study'], data.LABELS['SICK'], transformations)
+
+        return train_cache, test_cache
