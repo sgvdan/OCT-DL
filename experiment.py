@@ -31,6 +31,12 @@ class Experiment:
         train_sampler = torch.utils.data.sampler.WeightedRandomSampler(train_weights, len(train_weights))
         self.train_loader = torch.utils.data.DataLoader(dataset=self.train_dataset, batch_size=self.batch_size,
                                                         sampler=train_sampler)
+
+        # TODO: Split to validation and training. Code from Michal:
+        # torch.manual_seed(0)
+        # self.train_set, self.val_set = torch.utils.data.random_split(dataset, [int(0.8 * len(dataset)),
+        #                                                                        len(dataset) - int(0.8 * len(dataset))])
+
         # Test Dataset
         print("Load test dataset")
         self.test_dataset = BScansGenerator(test_cache)
