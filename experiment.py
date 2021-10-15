@@ -1,5 +1,5 @@
 import torch
-
+import random
 import data
 from train import train, train_loop
 from data import BScansGenerator, Cache
@@ -18,6 +18,9 @@ class Experiment:
 
     def __init__(self, config):
         assert config is not None
+
+        torch.manual_seed(0)
+        random.seed(0)
 
         for key, value in config.items():
             setattr(self, key, value)
@@ -81,17 +84,14 @@ class Experiment:
 
     def buildup_data(self):
         """
-        :return: (train cache, test_cache)
+        :return: (test_cache, validation_cache, train_cache)
         """
-        train_cache = Cache(self.cache_path, 'train')
-        test_cache = Cache(self.cache_path, 'test')
+        cache = Cache(self.cache_path, 'train')
+        # test_cache = Cache(self.cache_path, 'test')
 
         if self.refresh_cache:
             transformations = transforms.Resize(self.input_size)
-            data.buildup_cache(train_cache, self.train_path['control'], data.LABELS['HEALTHY'], transformations)
-            data.buildup_cache(train_cache, self.train_path['study'], data.LABELS['SICK'], transformations)
+            data.buildup_cache(cache, self.train_path['control'], data.LABELS['HEALTHY'], transformations)
+            data.buildup_cache(cache, self.train_path['study'], data.LABELS['SICK'], transformations)
 
-            data.buildup_cache(test_cache, self.test_path['control'], data.LABELS['HEALTHY'], transformations)
-            data.buildup_cache(test_cache, self.test_path['study'], data.LABELS['SICK'], transformations)
-
-        return train_cache, test_cache
+        return data.random_split_cache(cache, [0.2, 0.15, 0.65])

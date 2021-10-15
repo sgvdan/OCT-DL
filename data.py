@@ -1,6 +1,7 @@
 import torch
+import random
 from torch.utils.data import Dataset
-from torchvision import transforms
+import math
 
 from pathlib import Path
 from oct_converter.readers import E2E
@@ -79,6 +80,25 @@ class Cache:
         return len(self.cache_fs)
 
 
+class PartialCache:
+    def __init__(self, cache, lut):
+        self.cache = cache
+        self.lut = lut
+        self.labels = {idx: self.cache.labels[idx] for idx in lut}
+
+    def get_labels(self):
+        return self.labels
+
+    def __getitem__(self, idx):
+        return self.cache[self.lut[idx]]
+
+    def __setitem__(self, idx, value):
+        self.cache[self.lut[idx]] = value
+
+    def __len__(self):
+        return len(self.lut)
+
+
 class BScansGenerator(Dataset):
     def __init__(self, cache):
         self.cache = cache
@@ -110,7 +130,38 @@ class BScansGenerator(Dataset):
         return self.cache[idx], self.labels[idx]
 
 
+def random_split_cache(cache, breakdown):
+    """
+
+    :param cache: cache to split
+    :param breakdown: list of fractions to breakdown the cache according tobreakdowns
+    :return: list of caches, generated from input *cache* according to *breakdown*
+    """
+    assert sum(breakdown) == 1
+
+    # Randomly split the caches
+    lut = list(range(len(cache)))
+    random.shuffle(lut)
+
+    caches = []
+    tail = 0
+    for part in breakdown:
+        head = math.floor(tail + part * len(cache))  # we might be losing `len(breakdown)` samples here - negligible
+        caches.append(PartialCache(cache, lut[tail:head]))
+        tail = head
+
+    return caches
+
+
 def buildup_cache(cache, path, label, transformations):
+    """
+
+    :param cache:
+    :param path:
+    :param label:
+    :param transformations:
+    :return:
+    """
     counter = len(cache)
     for sample in tqdm(list(Path(path).rglob("*.E2E"))):
         if not Path.is_dir(sample):
@@ -128,8 +179,8 @@ def buildup_cache(cache, path, label, transformations):
                         cache[counter] = (tomogram, label)
                         counter += 1
                     except Exception as ex:
-                        print("An exception of type {0} occurred. Arguments:\n{1!r}".format(type(ex).__name__, ex.args))
-                        print("Ignored volume {0} in sample {1} - type match error".format(idx, sample))
+                        print("Ignored volume {0} in sample {1}. An exception of type {2} occurred. \
+                               Arguments:\n{1!r}".format(idx, sample, type(ex).__name__, ex.args))
                         continue
 
                 # util.imshow(volume.volume[start], "{0} START - {1}:{2}".format(label, sample, volume.patient_id))
