@@ -119,10 +119,7 @@ class BScansGenerator(Dataset):
 
         weights = [0] * num_scans
         for idx, label in self.labels.items():
-            try:
-                weights[idx] = weight_per_label[int(label)]
-            except:
-                import pdb; pdb.set_trace()
+            weights[idx] = weight_per_label[int(label)]
 
         return torch.FloatTensor(weights)
 
@@ -156,7 +153,7 @@ def random_split_cache(cache, breakdown):
     return caches
 
 
-def buildup_cache(cache, path, label, transformations):
+def buildup_cache(cache, path, label, limit, transformations):
     """
 
     :param cache:
@@ -185,6 +182,9 @@ def buildup_cache(cache, path, label, transformations):
                         print("Ignored volume {0} in sample {1}. An exception of type {2} occurred. \
                                Arguments:\n{1!r}".format(idx, sample, type(ex).__name__, ex.args))
                         continue
+
+                    if counter >= limit:
+                        return
 
                 # util.imshow(volume.volume[start], "{0} START - {1}:{2}".format(label, sample, volume.patient_id))
                 # util.imshow(volume.volume[end - 1], "{0} END - {1}:{2}".format(label, sample, volume.patient_id))

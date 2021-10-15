@@ -83,11 +83,11 @@ class Experiment:
         """
         :return: (test_cache, validation_cache, train_cache)
         """
-        cache = Cache(self.cache_path, 'train')  # TODO: Change to 'nominal' and refresh the cache
+        cache = Cache(self.cache_path, 'train')  # TODO: Change to 'self.cache_name' and refresh the cache
 
         if self.refresh_cache:
             transformations = transforms.Resize(self.input_size)
-            data.buildup_cache(cache, self.dataset_control_path, data.LABELS['HEALTHY'], transformations)
-            data.buildup_cache(cache, self.dataset_study_path, data.LABELS['SICK'], transformations)
+            data.buildup_cache(cache, self.dataset_control_path, data.LABELS['HEALTHY'], self.control_limit, transformations)
+            data.buildup_cache(cache, self.dataset_study_path, data.LABELS['SICK'], self.study_limit, transformations)
 
         return data.random_split_cache(cache, [self.test_size, self.validation_size, self.training_size])
