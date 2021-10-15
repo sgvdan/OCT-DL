@@ -38,7 +38,6 @@ def update_best_models(model, optimizer, model_acc, best_models_dict):
 def train(model, criterion, optimizer, train_loader, test_loader, epochs, device):
     for epoch in tqdm(range(epochs)):
         for (train_images, train_labels), (test_images, test_labels) in zip(train_loader, cycle(test_loader)):
-
             # train
             train_model_acc = train_loop(model=model, criterion=criterion,
                                          optimizer=optimizer,
