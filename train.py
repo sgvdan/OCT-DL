@@ -43,7 +43,7 @@ def train(model, criterion, optimizer, train_loader, validation_loader, epochs, 
             loss, accuracy = train_loop(model=model, criterion=criterion, optimizer=optimizer, device=device,
                                         images=train_images, labels=train_labels, mode='train')
 
-            running_train_loss += loss.item()
+            running_train_loss += loss
             running_train_accuracy += accuracy
         wandb.log({'Train/loss': running_train_loss/len(train_loader),
                    'Train/accuracy': running_train_accuracy/len(train_loader)})
@@ -71,12 +71,15 @@ def train_loop(model, criterion, optimizer, device, images, labels, mode):
     pred_scores = model(images)
 
     # Calculate the loss & accuracy
-    loss = criterion(pred_scores, labels)
     accuracy = calc_accuracy(pred_scores, labels, specific_label=None)
+    loss_value = 0
 
     if mode == "train":
+        loss = criterion(pred_scores, labels)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-    return loss, accuracy
+        loss_value = loss.item()
+
+    return loss_value, accuracy
