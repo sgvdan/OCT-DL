@@ -83,7 +83,7 @@ class Experiment:
         """
         :return: (test_cache, validation_cache, train_cache)
         """
-        cache = Cache(self.cache_path, 'train') # TODO: Change to 'nominal' and refresh the cache
+        cache = Cache(self.cache_path, 'train')  # TODO: Change to 'nominal' and refresh the cache
 
         if self.refresh_cache:
             transformations = transforms.Resize(self.input_size)

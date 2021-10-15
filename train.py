@@ -37,9 +37,9 @@ def update_best_models(model, optimizer, model_acc, best_models_dict):
 
 def train(model, criterion, optimizer, train_loader, validation_loader, epochs, device):
     for epoch in tqdm(range(epochs)):
+        # Train
         running_train_loss, running_train_accuracy = 0.0, 0.0
         for train_images, train_labels in train_loader:
-            # train
             loss, accuracy = train_loop(model=model, criterion=criterion, optimizer=optimizer, device=device,
                                         images=train_images, labels=train_labels, mode='train')
 
@@ -48,6 +48,7 @@ def train(model, criterion, optimizer, train_loader, validation_loader, epochs, 
         wandb.log({'Train/loss': running_train_loss/len(train_loader),
                    'Train/accuracy': running_train_accuracy/len(train_loader)})
 
+        # Validate
         running_validation_accuracy = 0.0
         for validation_images, validation_labels in validation_loader:
             _, accuracy = train_loop(model=model, criterion=criterion, optimizer=optimizer, device=device,
@@ -57,7 +58,7 @@ def train(model, criterion, optimizer, train_loader, validation_loader, epochs, 
 
 
 def train_loop(model, criterion, optimizer, device, images, labels, mode):
-    # Set model mode
+    # Make sure mode is as expected
     if mode == "train" and not model.training:
         model.train()
     elif mode == "eval" and model.training:
