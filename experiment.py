@@ -19,32 +19,33 @@ class Experiment:
     def __init__(self, config):
         assert config is not None
 
+        # Fix randomness
         torch.manual_seed(0)
         random.seed(0)
 
+        # Set Config
         for key, value in config.items():
             setattr(self, key, value)
 
-        train_cache, test_cache = self.buildup_data()
+        # Build up caches
+        test_cache, validation_cache, train_cache = self.buildup_data()
 
-        # Train Dataset
-        print("Load train dataset")
+        # Build up Training Dataset
+        print("Load Train")
         self.train_dataset = BScansGenerator(train_cache)
         train_weights = self.train_dataset.make_weights_for_balanced_classes()
         train_sampler = torch.utils.data.sampler.WeightedRandomSampler(train_weights, len(train_weights))
         self.train_loader = torch.utils.data.DataLoader(dataset=self.train_dataset, batch_size=self.batch_size,
                                                         sampler=train_sampler)
-
-        # TODO: Split to validation and training. Code from Michal:
-        # torch.manual_seed(0)
-        # self.train_set, self.val_set = torch.utils.data.random_split(dataset, [int(0.8 * len(dataset)),
-        #                                                                        len(dataset) - int(0.8 * len(dataset))])
+        # Validation Dataset
+        print("Load Validation")
+        self.validation_dataset = BScansGenerator(validation_cache)
+        self.validation_loader = torch.utils.data.DataLoader(dataset=self.validation_dataset, batch_size=self.batch_size)
 
         # Test Dataset
-        print("Load test dataset")
+        print("Load Test")
         self.test_dataset = BScansGenerator(test_cache)
-        self.test_loader = torch.utils.data.DataLoader(dataset=self.test_dataset, batch_size=self.batch_size,
-                                                       shuffle=True)
+        self.test_loader = torch.utils.data.DataLoader(dataset=self.test_dataset, batch_size=self.batch_size)
 
         # Set Model, Optimizer & Loss
         self.criterion = torch.nn.functional.cross_entropy
@@ -53,45 +54,40 @@ class Experiment:
 
     def run(self):
         self.train_model()
-        self.model_acc = self.eval_model()
-        wandb.log({"model_accuracy": self.model_acc})
-        print("Model's accuracy: {}".format(self.model_acc), flush=True)
+        accuracy = self.eval_model()
+        print("Model's accuracy: {}".format(accuracy), flush=True)
 
     """
     TODO: Doc
     """
     def train_model(self):
         train(model=self.model, criterion=self.criterion,
-              optimizer=self.optimizer, train_loader=self.train_loader, test_loader=self.test_loader,
+              optimizer=self.optimizer, train_loader=self.train_loader, validation_loader=self.validation_loader,
               epochs=self.epochs, device=self.device)
         # load_best_state(self.model, self.optimizer)
 
-    """
-    TODO: Doc
-    """
     def eval_model(self):
-        accuracies = []
-        weights = []
-        for (test_images, test_labels) in self.test_loader:
+        running_test_accuracy = 0.0
+        for test_images, test_labels in self.test_loader:
             # test accuracy of batch
-            accuracy = train_loop(model=self.model, criterion=self.criterion,
-                                  optimizer=self.optimizer, device=self.device,
-                                  images=test_images, labels=test_labels, mode="Test")
-            accuracies.append(accuracy)
-            weights.append(test_images.size(0))
-        test_accuracy = sum([accuracy * weight for accuracy, weight in zip(accuracies, weights)]) / sum(weights)
-        return round(test_accuracy, 2)
+            _, accuracy = train_loop(model=self.model, criterion=self.criterion, optimizer=self.optimizer,
+                                     device=self.device, images=test_images, labels=test_labels, mode='eval')
+            running_test_accuracy += accuracy
+
+        test_accuracy = round(running_test_accuracy/len(self.test_loader), 2)
+        wandb.log({"Test/accuracy": test_accuracy})
+
+        return test_accuracy
 
     def buildup_data(self):
         """
         :return: (test_cache, validation_cache, train_cache)
         """
-        cache = Cache(self.cache_path, 'train')
-        # test_cache = Cache(self.cache_path, 'test')
+        cache = Cache(self.cache_path, 'train') # TODO: Change to 'nominal' and refresh the cache
 
         if self.refresh_cache:
             transformations = transforms.Resize(self.input_size)
-            data.buildup_cache(cache, self.train_path['control'], data.LABELS['HEALTHY'], transformations)
-            data.buildup_cache(cache, self.train_path['study'], data.LABELS['SICK'], transformations)
+            data.buildup_cache(cache, self.dataset_control_path, data.LABELS['HEALTHY'], transformations)
+            data.buildup_cache(cache, self.dataset_study_path, data.LABELS['SICK'], transformations)
 
-        return data.random_split_cache(cache, [0.2, 0.15, 0.65])
+        return data.random_split_cache(cache, [self.test_size, self.validation_size, self.training_size])

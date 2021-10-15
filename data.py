@@ -84,7 +84,7 @@ class PartialCache:
     def __init__(self, cache, lut):
         self.cache = cache
         self.lut = lut
-        self.labels = {idx: self.cache.labels[idx] for idx in lut}
+        self.labels = {idx: self.cache.labels[lut_idx] for idx, lut_idx in enumerate(lut)}
 
     def get_labels(self):
         return self.labels
@@ -119,7 +119,10 @@ class BScansGenerator(Dataset):
 
         weights = [0] * num_scans
         for idx, label in self.labels.items():
-            weights[idx] = weight_per_label[int(label)]
+            try:
+                weights[idx] = weight_per_label[int(label)]
+            except:
+                import pdb; pdb.set_trace()
 
         return torch.FloatTensor(weights)
 

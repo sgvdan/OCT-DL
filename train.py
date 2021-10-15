@@ -35,33 +35,33 @@ def update_best_models(model, optimizer, model_acc, best_models_dict):
                 }, best_model_path)
 
 
-def train(model, criterion, optimizer, train_loader, test_loader, epochs, device):
+def train(model, criterion, optimizer, train_loader, validation_loader, epochs, device):
     for epoch in tqdm(range(epochs)):
-        for (train_images, train_labels), (test_images, test_labels) in zip(train_loader, cycle(test_loader)):
+        running_train_loss, running_train_accuracy = 0.0, 0.0
+        for train_images, train_labels in train_loader:
             # train
-            train_model_acc = train_loop(model=model, criterion=criterion,
-                                         optimizer=optimizer,
-                                         device=device, images=train_images, labels=train_labels,
-                                         mode="Train")
-            # test
-            test_model_acc = train_loop(model=model, criterion=criterion,
-                                        optimizer=optimizer,
-                                        device=device, images=test_images, labels=test_labels, mode="Test")
-            # update best model if necessary
-            best_models_dict = get_best_models_dict()
-            if model.name not in best_models_dict or test_model_acc > best_models_dict[model.name]:
-                update_best_models(model=model, optimizer=optimizer, model_acc=test_model_acc,
-                                   best_models_dict=best_models_dict)
+            loss, accuracy = train_loop(model=model, criterion=criterion, optimizer=optimizer, device=device,
+                                        images=train_images, labels=train_labels, mode='train')
+
+            running_train_loss += loss.item()
+            running_train_accuracy += accuracy
+        wandb.log({'Train/loss': running_train_loss/len(train_loader),
+                   'Train/accuracy': running_train_accuracy/len(train_loader)})
+
+        running_validation_accuracy = 0.0
+        for validation_images, validation_labels in validation_loader:
+            _, accuracy = train_loop(model=model, criterion=criterion, optimizer=optimizer, device=device,
+                                     images=validation_images, labels=validation_labels, mode='eval')
+            running_validation_accuracy += accuracy
+        wandb.log({'Validation/accuracy': running_validation_accuracy/len(train_loader)})
 
 
-def train_loop(model, criterion, optimizer, device, images, labels, mode="Train"):
+def train_loop(model, criterion, optimizer, device, images, labels, mode):
     # Set model mode
-    if mode == "Train":
+    if mode == "train" and not model.training:
         model.train()
-    elif mode == "Test":
+    elif mode == "eval" and model.training:
         model.eval()
-    else:
-        raise RuntimeError()
 
     # Move to device
     images, labels = images.to(device=device, dtype=torch.float), labels.to(device=device, dtype=torch.int64)
@@ -69,20 +69,13 @@ def train_loop(model, criterion, optimizer, device, images, labels, mode="Train"
     # Run the model on the input batch
     pred_scores = model(images)
 
-    # Calculate the accuracy for this batch
-    for label, value in data.LABELS.items():
-        accuracy = calc_accuracy(pred_scores, labels, specific_label=value)
-        wandb.log({"{mode}/accuracy/{label}".format(mode=mode, label=label): accuracy})
+    # Calculate the loss & accuracy
+    loss = criterion(pred_scores, labels)
     accuracy = calc_accuracy(pred_scores, labels, specific_label=None)
-    wandb.log({"{mode}/accuracy".format(mode=mode): accuracy})
 
-    if mode == "Train":
-        # Calculate the loss for this batch
-        loss = criterion(pred_scores, labels)
-        wandb.log({"Train/loss": loss})
-        # Update gradients
+    if mode == "train":
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-    return accuracy
+    return loss, accuracy
