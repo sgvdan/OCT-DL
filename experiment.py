@@ -27,30 +27,42 @@ class Experiment:
         for key, value in config.items():
             setattr(self, key, value)
 
-        # Build up caches
-        test_cache, validation_cache, train_cache = self.buildup_data()
-
-        # Build up Training Dataset
-        print("Load Train")
-        self.train_dataset = BScansGenerator(train_cache)
-        train_weights = self.train_dataset.make_weights_for_balanced_classes()
-        train_sampler = torch.utils.data.sampler.WeightedRandomSampler(train_weights, len(train_weights))
-        self.train_loader = torch.utils.data.DataLoader(dataset=self.train_dataset, batch_size=self.batch_size,
-                                                        sampler=train_sampler)
-        # Validation Dataset
-        print("Load Validation")
-        self.validation_dataset = BScansGenerator(validation_cache)
-        self.validation_loader = torch.utils.data.DataLoader(dataset=self.validation_dataset, batch_size=self.batch_size)
-
-        # Test Dataset
-        print("Load Test")
-        self.test_dataset = BScansGenerator(test_cache)
-        self.test_loader = torch.utils.data.DataLoader(dataset=self.test_dataset, batch_size=self.batch_size)
+        # Build up data
+        self.test_loader, self.validation_loader, self.train_loader = self.buildup_data()
 
         # Set Model, Optimizer & Loss
         self.criterion = torch.nn.functional.cross_entropy
         self.model, self.optimizer = get_model_and_optim(model_name=self.model_name, lr=self.lr, device=self.device,
                                                          load_best_model=False)
+
+    def buildup_data(self):
+        cache = Cache(self.cache_name)
+
+        if self.refresh_cache:
+            transformations = transforms.Resize(self.input_size)
+            data.buildup_cache(cache, self.dataset_control_path, data.LABELS['HEALTHY'], self.control_limit, transformations)
+            data.buildup_cache(cache, self.dataset_study_path, data.LABELS['SICK'], self.study_limit, transformations)
+
+        test_cache, validation_cache, train_cache = data.random_split_cache(cache, [self.test_size, self.validation_size, self.training_size])
+
+        # Build up Training Dataset
+        print("Load Train")
+        train_dataset = BScansGenerator(train_cache)
+        train_weights = train_dataset.make_weights_for_balanced_classes()
+        train_sampler = torch.utils.data.sampler.WeightedRandomSampler(train_weights, len(train_weights))
+        train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=self.batch_size,
+                                                        sampler=train_sampler)
+        # Build up Validation Dataset
+        print("Load Validation")
+        validation_dataset = BScansGenerator(validation_cache)
+        validation_loader = torch.utils.data.DataLoader(dataset=validation_dataset, batch_size=self.batch_size)
+
+        # Build up Test Dataset
+        print("Load Test")
+        test_dataset = BScansGenerator(test_cache)
+        test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=self.batch_size)
+
+        return test_loader, validation_loader, train_loader
 
     def run(self):
         self.train_model()
@@ -78,16 +90,3 @@ class Experiment:
         wandb.log({"Test/accuracy": test_accuracy})
 
         return test_accuracy
-
-    def buildup_data(self):
-        """
-        :return: (test_cache, validation_cache, train_cache)
-        """
-        cache = Cache(self.cache_path, 'train')  # TODO: Change to 'self.cache_name' and refresh the cache
-
-        if self.refresh_cache:
-            transformations = transforms.Resize(self.input_size)
-            data.buildup_cache(cache, self.dataset_control_path, data.LABELS['HEALTHY'], self.control_limit, transformations)
-            data.buildup_cache(cache, self.dataset_study_path, data.LABELS['SICK'], self.study_limit, transformations)
-
-        return data.random_split_cache(cache, [self.test_size, self.validation_size, self.training_size])

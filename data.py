@@ -15,12 +15,11 @@ LABELS = {'HEALTHY': torch.tensor(0), 'SICK': torch.tensor(1)}
 
 
 class Cache:
-    def __init__(self, cache_path, name):
+    def __init__(self, name):
         """
-        :param cache_path: General path for all caches
         :param name: Unique name for this cache
         """
-        self.cache_path = Path(cache_path) / name
+        self.cache_path = Path('./.cache') / name
         self.cache_fs_path = self.cache_path / '.cache_fs'
         self.labels_path = self.cache_path / '.labels'
 
