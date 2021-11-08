@@ -20,14 +20,18 @@ def extract_e2e(src_e2e, dst_dir):
 
     shutil.copy2(src_e2e_path, dst_dir_path)
 
-    idx = 0
     for volume in E2E(src_e2e_path).read_oct_volume():
-        for b_scan in volume.volume:
+        volume_path = images_path / volume.patient_id
+        os.mkdir(volume_path)
+
+        b_scans = volume.volume
+        b_scans.insert(0, b_scans.pop())  # fix oct-reader bug appending first image to last
+
+        for idx, b_scan in enumerate(b_scans):
             img = Image.fromarray(b_scan).convert('RGB')
             enhancer = ImageEnhance.Brightness(img)
-            img_enhanced = enhancer.enhance(2)
-            img_enhanced.save(images_path / '{idx}_{pat_id}.tiff'.format(idx=idx, pat_id=volume.patient_id))
-            idx += 1
+            img_enhanced = enhancer.enhance(2.5)
+            img_enhanced.save(volume_path / '{idx}.tiff'.format(idx=idx+1))
 
     return True
 
