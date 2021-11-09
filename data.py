@@ -22,6 +22,7 @@ class Cache:
         self.cache_path = Path('./.cache') / name
         self.cache_fs_path = self.cache_path / '.cache_fs'
         self.labels_path = self.cache_path / '.labels'
+        self.ids_path = self.cache_path / '.ids'
 
         # Create cache directory
         if not self.cache_path.exists():
@@ -41,8 +42,18 @@ class Cache:
         else:
             self.labels = {}
 
+        # Retrieve ids
+        if self.ids_path.exists():
+            with open(self.ids_path, 'rb') as file:
+                self.ids = pickle.load(file)
+        else:
+            self.ids = {}
+
     def get_labels(self):
         return self.labels
+
+    def get_ids(self):
+        return self.ids
 
     def __getitem__(self, idx):
         """
@@ -57,10 +68,10 @@ class Cache:
     def __setitem__(self, idx, value):
         """
         :param idx: index to set by
-        :param value: (data, label) - tuple of data and label, both should be torch tensors
+        :param value: (data, patient_id, label) - tuple of data and label, both should be torch tensors
         :return: None
         """
-        data, label = value
+        data, patient_id, label = value
 
         item_path = self.cache_path / str(idx)
         with open(item_path, 'wb+') as file:
@@ -68,12 +79,16 @@ class Cache:
 
         self.cache_fs[idx] = item_path
         self.labels[idx] = label
+        self.ids[idx] = patient_id
 
         with open(self.cache_fs_path, 'wb+') as file:
             pickle.dump(self.cache_fs, file)
 
         with open(self.labels_path, 'wb+') as file:
             pickle.dump(self.labels, file)
+
+        with open(self.ids_path, 'wb+') as file:
+            pickle.dump(self.ids, file)
 
     def __len__(self):
         return len(self.cache_fs)
@@ -83,10 +98,12 @@ class PartialCache:
     def __init__(self, cache, lut):
         self.cache = cache
         self.lut = lut
-        self.labels = {idx: self.cache.labels[lut_idx] for idx, lut_idx in enumerate(lut)}
 
     def get_labels(self):
-        return self.labels
+        return {idx: self.cache.labels[lut_idx] for idx, lut_idx in enumerate(self.lut)}
+
+    def get_ids(self):
+        return {idx: self.cache.ids[lut_idx] for idx, lut_idx in enumerate(self.lut)}
 
     def __getitem__(self, idx):
         return self.cache[self.lut[idx]]
@@ -171,6 +188,8 @@ def distinct_split_cache(cache, breakdown):
     patient_lut = cache.patient_lut
     #random.shuffle(patient_lut)
 
+    # TODO: generate dictionary of {"idx": [all indices that start with this index]}
+
     # First-Fit bin packing
     for name, indices in patient_lut:
         package_size = len(indices)
@@ -211,7 +230,7 @@ def buildup_cache(cache, path, label, limit, transformations):
                     try:
                         # TODO: Incorporate all transformations to 'transformations'
                         tomogram = transformations(torch.tensor(volume.volume[idx]).unsqueeze(0).expand(3, -1, -1))
-                        cache[counter] = (tomogram, label)
+                        cache[counter] = (tomogram, volume.patient_id, label)
                         counter += 1
                     except Exception as ex:
                         print("Ignored volume {0} in sample {1}. An exception of type {2} occurred. \
