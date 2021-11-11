@@ -46,7 +46,8 @@ def train(model, criterion, optimizer, train_loader, validation_loader, epochs, 
             running_train_loss += loss
             running_train_accuracy += accuracy
         wandb.log({'Train/loss': running_train_loss/len(train_loader),
-                   'Train/accuracy': running_train_accuracy/len(train_loader)})
+                   'Train/accuracy': running_train_accuracy/len(train_loader),
+                   'epoch': epoch})
 
         # Validate
         running_validation_accuracy = 0.0
@@ -54,7 +55,8 @@ def train(model, criterion, optimizer, train_loader, validation_loader, epochs, 
             _, accuracy = train_loop(model=model, criterion=criterion, optimizer=optimizer, device=device,
                                      images=validation_images, labels=validation_labels, mode='eval')
             running_validation_accuracy += accuracy
-        wandb.log({'Validation/accuracy': running_validation_accuracy/len(validation_loader)})
+        wandb.log({'Validation/accuracy': running_validation_accuracy/len(validation_loader),
+                   'epoch': epoch})
 
 
 def train_loop(model, criterion, optimizer, device, images, labels, mode):

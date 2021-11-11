@@ -1,7 +1,6 @@
 import torch
 import random
 from torch.utils.data import Dataset
-import math
 
 from pathlib import Path
 from oct_converter.readers import E2E
@@ -10,6 +9,7 @@ import pickle
 import math
 import util
 import wandb
+from torchvision import transforms
 
 LABELS = {'HEALTHY': torch.tensor(0), 'SICK': torch.tensor(1)}
 
@@ -169,46 +169,7 @@ def random_split_cache(cache, breakdown):
     return caches
 
 
-def distinct_split_cache(cache, breakdown):
-    """
-    This is basically 'bin-packing' problem.
-    We'll use First-Fit (https://en.wikipedia.org/wiki/First-fit_bin_packing)
-    :param cache:
-    :param breakdown:
-    :return:
-    """
-
-    bins = []
-    caches = []
-    lut = list(range(len(cache)))
-
-    for fraction in breakdown:
-        bins.append({'patients': [], 'lut': [], 'capacity': fraction*len(cache)})
-
-    patient_lut = cache.patient_lut
-    #random.shuffle(patient_lut)
-
-    # TODO: generate dictionary of {"idx": [all indices that start with this index]}
-
-    # First-Fit bin packing
-    for name, indices in patient_lut:
-        package_size = len(indices)
-        for bin in bins:
-            bin_size = len(bin['lut'])
-            if bin_size + package_size < bin['capacity']:
-                bin['patients'].append(name)
-                bin['lut'].append(indices)
-                break
-
-    # Print out what happened!
-    for bin in bins:
-        print('bin patients: {}, bin size: {}, bin capacity: {}'.format(bin['patients'], len(bin['lut']), bin['capacity']))
-
-    # Create lut tables for each bin
-    return [PartialCache(cache, bin['lut']) for bin in bins]
-
-
-def buildup_cache(cache, path, label, limit, transformations):
+def buildup_cache(cache, path, label, limit, config):
     """
     :param cache:
     :param path:
@@ -216,6 +177,9 @@ def buildup_cache(cache, path, label, limit, transformations):
     :param transformations:
     :return:
     """
+
+    transformations = transforms.Resize(config.input_size)
+
     counter = len(cache)
     for sample in tqdm(list(Path(path).rglob("*.E2E"))):
         if not Path.is_dir(sample):

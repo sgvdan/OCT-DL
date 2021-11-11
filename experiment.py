@@ -1,10 +1,10 @@
 import torch
 import random
 import data
+from config import default_config
 from train import train, train_loop
 from data import BScansGenerator, Cache
 from network import get_model_and_optim
-from torchvision import transforms
 
 import wandb
 
@@ -23,9 +23,11 @@ class Experiment:
         torch.manual_seed(0)
         random.seed(0)
 
-        # Set Config
+        # Set Config TODO: ERASE!
         for key, value in config.items():
             setattr(self, key, value)
+
+        self.config = config
 
         # Build up data
         self.test_loader, self.validation_loader, self.train_loader = self.buildup_data()
@@ -36,14 +38,19 @@ class Experiment:
                                                          load_best_model=False)
 
     def buildup_data(self):
-        cache = Cache(self.cache_name)
+        test_cache = Cache('test')
+        validation_cache = Cache('validation')
+        train_cache = Cache('train')
 
         if self.refresh_cache:
-            transformations = transforms.Resize(self.input_size)
-            data.buildup_cache(cache, self.dataset_control_path, data.LABELS['HEALTHY'], self.control_limit, transformations)
-            data.buildup_cache(cache, self.dataset_study_path, data.LABELS['SICK'], self.study_limit, transformations)
+            data.buildup_cache(test_cache, 'Data/test/control', data.LABELS['HEALTHY'], self.control_limit, self.config)
+            data.buildup_cache(test_cache, 'Data/test/study', data.LABELS['SICK'], self.study_limit, self.config)
 
-        test_cache, validation_cache, train_cache = data.random_split_cache(cache, [self.test_size, self.validation_size, self.training_size])
+            data.buildup_cache(validation_cache, 'Data/validation/control', data.LABELS['HEALTHY'], self.control_limit, self.config)
+            data.buildup_cache(validation_cache, 'Data/validation/study', data.LABELS['SICK'], self.study_limit, self.config)
+
+            data.buildup_cache(train_cache, 'Data/train/control', data.LABELS['HEALTHY'], self.control_limit, self.config)
+            data.buildup_cache(train_cache, 'Data/train/study', data.LABELS['SICK'], self.study_limit, self.config)
 
         # Build up Training Dataset
         print("Load Train")
@@ -90,3 +97,14 @@ class Experiment:
         wandb.log({"Test/accuracy": test_accuracy})
 
         return test_accuracy
+
+
+def main():
+    with wandb.init(project="OCT-DL", config=default_config):
+        config = wandb.config
+        experiment = Experiment(config)
+        experiment.run()
+
+
+if __name__ == '__main__':
+    main()
