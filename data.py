@@ -22,7 +22,6 @@ class Cache:
         self.cache_path = Path('./.cache') / name
         self.cache_fs_path = self.cache_path / '.cache_fs'
         self.labels_path = self.cache_path / '.labels'
-        self.ids_path = self.cache_path / '.ids'
 
         # Create cache directory
         if not self.cache_path.exists():
@@ -42,18 +41,8 @@ class Cache:
         else:
             self.labels = {}
 
-        # Retrieve ids
-        if self.ids_path.exists():
-            with open(self.ids_path, 'rb') as file:
-                self.ids = pickle.load(file)
-        else:
-            self.ids = {}
-
     def get_labels(self):
         return self.labels
-
-    def get_ids(self):
-        return self.ids
 
     def __getitem__(self, idx):
         """
@@ -63,15 +52,15 @@ class Cache:
         with open(self.cache_fs[idx], 'rb') as file:
             data = pickle.load(file)
 
-        return data
+        return data, self.labels[idx]
 
     def __setitem__(self, idx, value):
         """
         :param idx: index to set by
-        :param value: (data, patient_id, label) - tuple of data and label, both should be torch tensors
+        :param value: (data, label) - tuple of data and label, both should be torch tensors
         :return: None
         """
-        data, patient_id, label = value
+        data, label = value
 
         item_path = self.cache_path / str(idx)
         with open(item_path, 'wb+') as file:
@@ -79,16 +68,12 @@ class Cache:
 
         self.cache_fs[idx] = item_path
         self.labels[idx] = label
-        self.ids[idx] = patient_id
 
         with open(self.cache_fs_path, 'wb+') as file:
             pickle.dump(self.cache_fs, file)
 
         with open(self.labels_path, 'wb+') as file:
             pickle.dump(self.labels, file)
-
-        with open(self.ids_path, 'wb+') as file:
-            pickle.dump(self.ids, file)
 
     def __len__(self):
         return len(self.cache_fs)
@@ -102,9 +87,6 @@ class PartialCache:
     def get_labels(self):
         return {idx: self.cache.labels[lut_idx] for idx, lut_idx in enumerate(self.lut)}
 
-    def get_ids(self):
-        return {idx: self.cache.ids[lut_idx] for idx, lut_idx in enumerate(self.lut)}
-
     def __getitem__(self, idx):
         return self.cache[self.lut[idx]]
 
@@ -113,6 +95,18 @@ class PartialCache:
 
     def __len__(self):
         return len(self.lut)
+
+
+class E2EVolumeGenerator(Dataset):
+    def __init__(self, cache):
+        self.cache = cache
+        self.labels = cache.get_labels()
+
+    def __len__(self):
+        return len(self.cache)
+
+    def __getitem__(self, idx):
+        return self.cache[idx]
 
 
 class BScansGenerator(Dataset):
@@ -143,7 +137,7 @@ class BScansGenerator(Dataset):
         return len(self.cache)
 
     def __getitem__(self, idx):
-        return self.cache[idx], self.labels[idx]
+        return self.cache[idx]
 
 
 def random_split_cache(cache, breakdown):
@@ -169,7 +163,19 @@ def random_split_cache(cache, breakdown):
     return caches
 
 
-def buildup_cache(cache, path, label, limit, config):
+def build_volume_cache(cache, path, label, limit, config):
+    """
+
+    :param cache:
+    :param path:
+    :param label:
+    :param limit:
+    :param config:
+    :return:
+    """
+
+
+def buildup_tomograms_cache(cache, path, label, limit, config):
     """
     :param cache:
     :param path:
