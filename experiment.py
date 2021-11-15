@@ -3,7 +3,7 @@ import random
 import data
 from config import default_config
 from train import train, train_loop
-from data import BScansGenerator, Cache
+from data import BScansGenerator, E2EVolumeGenerator, Cache, make_weights_for_balanced_classes
 from network import get_model_and_optim
 
 import wandb
@@ -38,24 +38,24 @@ class Experiment:
                                                          load_best_model=False)
 
     def buildup_data(self):
-        test_cache = Cache('test')
-        validation_cache = Cache('validation')
-        train_cache = Cache('train')
+        test_cache = Cache('volume-test')
+        validation_cache = Cache('volume-validation')
+        train_cache = Cache('volume-train')
 
         if self.refresh_cache:
-            data.buildup_cache(test_cache, 'Data/test/control', data.LABELS['HEALTHY'], self.control_limit, self.config)
-            data.buildup_cache(test_cache, 'Data/test/study', data.LABELS['SICK'], self.study_limit, self.config)
+            data.build_volume_cache(test_cache, 'Data/test/control', data.LABELS['HEALTHY'], self.config)
+            data.build_volume_cache(test_cache, 'Data/test/study', data.LABELS['SICK'], self.config)
 
-            data.buildup_cache(validation_cache, 'Data/validation/control', data.LABELS['HEALTHY'], self.control_limit, self.config)
-            data.buildup_cache(validation_cache, 'Data/validation/study', data.LABELS['SICK'], self.study_limit, self.config)
+            data.build_volume_cache(validation_cache, 'Data/validation/control', data.LABELS['HEALTHY'], self.config)
+            data.build_volume_cache(validation_cache, 'Data/validation/study', data.LABELS['SICK'], self.config)
 
-            data.buildup_cache(train_cache, 'Data/train/control', data.LABELS['HEALTHY'], self.control_limit, self.config)
-            data.buildup_cache(train_cache, 'Data/train/study', data.LABELS['SICK'], self.study_limit, self.config)
+            data.build_volume_cache(train_cache, 'Data/train/control', data.LABELS['HEALTHY'], self.config)
+            data.build_volume_cache(train_cache, 'Data/train/study', data.LABELS['SICK'], self.config)
 
         # Build up Training Dataset
         print("Load Train")
-        train_dataset = BScansGenerator(train_cache)
-        train_weights = train_dataset.make_weights_for_balanced_classes()
+        train_dataset = E2EVolumeGenerator(train_cache)
+        train_weights = make_weights_for_balanced_classes(train_dataset, data.LABELS)
         train_sampler = torch.utils.data.sampler.WeightedRandomSampler(train_weights, len(train_weights))
         train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=self.batch_size,
                                                         sampler=train_sampler)

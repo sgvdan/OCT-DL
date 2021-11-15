@@ -78,6 +78,9 @@ class Cache:
     def __len__(self):
         return len(self.cache_fs)
 
+    def append(self, value):
+        self[len(self)] = value
+
 
 class PartialCache:
     def __init__(self, cache, lut):
@@ -100,7 +103,9 @@ class PartialCache:
 class E2EVolumeGenerator(Dataset):
     def __init__(self, cache):
         self.cache = cache
-        self.labels = cache.get_labels()
+
+    def get_labels(self):
+        return self.cache.get_labels()
 
     def __len__(self):
         return len(self.cache)
@@ -112,26 +117,9 @@ class E2EVolumeGenerator(Dataset):
 class BScansGenerator(Dataset):
     def __init__(self, cache):
         self.cache = cache
-        self.labels = cache.get_labels()
 
-    def make_weights_for_balanced_classes(self):
-        num_labels = len(LABELS)
-        num_scans = len(self.cache)
-
-        count = [0] * num_labels
-        for label in self.labels.values():
-            count[int(label)] += 1
-
-        weight_per_label = [0.] * len(LABELS)
-        N = float(num_scans)
-        for idx in LABELS.values():
-            weight_per_label[idx] = N / float(count[idx])
-
-        weights = [0] * num_scans
-        for idx, label in self.labels.items():
-            weights[idx] = weight_per_label[int(label)]
-
-        return torch.FloatTensor(weights)
+    def get_labels(self):
+        return self.cache.get_labels()
 
     def __len__(self):
         return len(self.cache)
@@ -163,7 +151,7 @@ def random_split_cache(cache, breakdown):
     return caches
 
 
-def build_volume_cache(cache, path, label, limit, config):
+def build_volume_cache(cache, path, label, config):
     """
 
     :param cache:
@@ -173,9 +161,26 @@ def build_volume_cache(cache, path, label, limit, config):
     :param config:
     :return:
     """
+    transformations = transforms.Resize(config.input_size)
+
+    counter = 0
+    for sample in tqdm(list(Path(path).rglob("*.E2E"))):
+        if sample.is_file():
+            for volume in E2E(sample).read_oct_volume():
+                try:
+                    tensored_volume = transformations(torch.tensor(volume.volume))
+                    cache.append((tensored_volume, label))
+                    counter += 1
+                except Exception as ex:
+                    print("Ignored volume {0} in sample {1}. An exception of type {2} occurred. \
+                               Arguments:\n{1!r}".format(volume.patient_id, sample, type(ex).__name__, ex.args))
+                    continue
+
+                if counter >= config.dataset_limit:
+                    return
 
 
-def buildup_tomograms_cache(cache, path, label, limit, config):
+def buildup_tomograms_cache(cache, path, label, config):
     """
     :param cache:
     :param path:
@@ -186,9 +191,9 @@ def buildup_tomograms_cache(cache, path, label, limit, config):
 
     transformations = transforms.Resize(config.input_size)
 
-    counter = len(cache)
+    counter = 0
     for sample in tqdm(list(Path(path).rglob("*.E2E"))):
-        if not Path.is_dir(sample):
+        if sample.is_file():
             for volume in E2E(sample).read_oct_volume():
                 # 'Naively' center around the Fovea
                 tomograms_count = len(volume.volume)
@@ -200,12 +205,35 @@ def buildup_tomograms_cache(cache, path, label, limit, config):
                     try:
                         # TODO: Incorporate all transformations to 'transformations'
                         tomogram = transformations(torch.tensor(volume.volume[idx]).unsqueeze(0).expand(3, -1, -1))
-                        cache[counter] = (tomogram, volume.patient_id, label)
+                        cache.append((tomogram, volume.patient_id, label))
                         counter += 1
                     except Exception as ex:
                         print("Ignored volume {0} in sample {1}. An exception of type {2} occurred. \
                                Arguments:\n{1!r}".format(idx, sample, type(ex).__name__, ex.args))
                         continue
 
-                    if counter >= limit:
+                    if counter >= config.dataset_limit:
                         return
+
+
+def make_weights_for_balanced_classes(dataset, classes):
+    num_classes = len(classes)
+    num_scans = len(dataset)
+    labels = dataset.get_labels()
+
+    # Count # of appearances per each class
+    count = [0] * num_classes
+    for label in labels.values():
+        count[int(label)] += 1
+
+    # Each class receives weight in reverse proportion to its # of appearances
+    weight_per_class = [0.] * num_classes
+    for idx in classes.values():
+        weight_per_class[idx] = float(num_scans) / float(count[idx])
+
+    # Assign class-corresponding weight for each element
+    weights = [0] * num_scans
+    for idx, label in labels.items():
+        weights[idx] = weight_per_class[int(label)]
+
+    return torch.FloatTensor(weights)
