@@ -1,5 +1,7 @@
 import math
 
+# Default configuration to use
+
 default_config = {'dataset_control_path': 'Data/control',
                   'dataset_study_path': 'Data/study',
 
