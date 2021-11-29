@@ -2,9 +2,9 @@ import torch
 import random
 import data
 from config import default_config
-from train import train, train_loop
+from train import train, train_loop, evaluate
 from data import BScansGenerator, E2EVolumeGenerator, Cache, make_weights_for_balanced_classes
-from network import get_model_and_optim
+from network_2d import get_model_and_optim, load_best_state
 
 import wandb
 
@@ -23,10 +23,6 @@ class Experiment:
         torch.manual_seed(0)
         random.seed(0)
 
-        # Set Config TODO: ERASE!
-        for key, value in config.items():
-            setattr(self, key, value)
-
         self.config = config
 
         # Build up data
@@ -34,45 +30,46 @@ class Experiment:
 
         # Set Model, Optimizer & Loss
         self.criterion = torch.nn.functional.cross_entropy
-        self.model, self.optimizer = get_model_and_optim(model_name=self.model_name, lr=self.lr, device=self.device,
-                                                         load_best_model=False)
+        self.model, self.optimizer = get_model_and_optim(model_name=self.config.model_name, lr=self.config.lr, device=self.config.device,
+                                                         load_best_model=True, pretrained=False)
 
     def buildup_data(self):
-        test_cache = Cache('volume-test')
-        validation_cache = Cache('volume-validation')
-        train_cache = Cache('volume-train')
+        test_cache = Cache('tomogram-test')
+        validation_cache = Cache('tomogram-validation')
+        train_cache = Cache('tomogram-train')
 
-        if self.refresh_cache:
-            data.build_volume_cache(test_cache, 'Data/test/control', data.LABELS['HEALTHY'], self.config)
-            data.build_volume_cache(test_cache, 'Data/test/study', data.LABELS['SICK'], self.config)
+        if self.config.refresh_cache:
+            data.build_tomograms_cache(test_cache, 'Data/test/control', data.LABELS['HEALTHY'])
+            data.build_tomograms_cache(test_cache, 'Data/test/study', data.LABELS['SICK'])
 
-            data.build_volume_cache(validation_cache, 'Data/validation/control', data.LABELS['HEALTHY'], self.config)
-            data.build_volume_cache(validation_cache, 'Data/validation/study', data.LABELS['SICK'], self.config)
+            data.build_tomograms_cache(validation_cache, 'Data/validation/control', data.LABELS['HEALTHY'])
+            data.build_tomograms_cache(validation_cache, 'Data/validation/study', data.LABELS['SICK'])
 
-            data.build_volume_cache(train_cache, 'Data/train/control', data.LABELS['HEALTHY'], self.config)
-            data.build_volume_cache(train_cache, 'Data/train/study', data.LABELS['SICK'], self.config)
+            data.build_tomograms_cache(train_cache, 'Data/train/control', data.LABELS['HEALTHY'])
+            data.build_tomograms_cache(train_cache, 'Data/train/study', data.LABELS['SICK'])
 
         # Build up Training Dataset
         print("Load Train")
-        train_dataset = E2EVolumeGenerator(train_cache)
+        train_dataset = BScansGenerator(train_cache, transformations=data.tomograms_train_transformation)
         train_weights = make_weights_for_balanced_classes(train_dataset, data.LABELS)
         train_sampler = torch.utils.data.sampler.WeightedRandomSampler(train_weights, len(train_weights))
-        train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=self.batch_size,
+        train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=self.config.batch_size,
                                                         sampler=train_sampler)
         # Build up Validation Dataset
         print("Load Validation")
-        validation_dataset = BScansGenerator(validation_cache)
-        validation_loader = torch.utils.data.DataLoader(dataset=validation_dataset, batch_size=self.batch_size)
+        validation_dataset = BScansGenerator(validation_cache, transformations=data.tomograms_validation_transformation)
+        validation_loader = torch.utils.data.DataLoader(dataset=validation_dataset, batch_size=self.config.batch_size)
 
         # Build up Test Dataset
         print("Load Test")
-        test_dataset = BScansGenerator(test_cache)
-        test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=self.batch_size)
+        test_dataset = BScansGenerator(test_cache, transformations=data.tomograms_test_transformation)
+        test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=self.config.batch_size)
 
         return test_loader, validation_loader, train_loader
 
     def run(self):
         self.train_model()
+        load_best_state(self.model, self.optimizer)  # Model Evaluation is performed on best-validation model
         accuracy = self.eval_model()
         print("Model's accuracy: {}".format(accuracy), flush=True)
 
@@ -82,28 +79,27 @@ class Experiment:
     def train_model(self):
         train(model=self.model, criterion=self.criterion,
               optimizer=self.optimizer, train_loader=self.train_loader, validation_loader=self.validation_loader,
-              epochs=self.epochs, device=self.device)
-        # load_best_state(self.model, self.optimizer)
+              epochs=self.config.epochs, device=self.config.device)
 
     def eval_model(self):
-        running_test_accuracy = 0.0
-        for test_images, test_labels in self.test_loader:
-            # test accuracy of batch
-            _, accuracy = train_loop(model=self.model, criterion=self.criterion, optimizer=self.optimizer,
-                                     device=self.device, images=test_images, labels=test_labels, mode='eval')
-            running_test_accuracy += accuracy
+        return evaluate(self.model, self.test_loader, 'Test', device=self.config.device)
 
-        test_accuracy = round(running_test_accuracy/len(self.test_loader), 2)
-        wandb.log({"Test/accuracy": test_accuracy})
 
-        return test_accuracy
+def runner(config):
+    experiment = Experiment(config)
+    experiment.run()
 
 
 def main():
-    with wandb.init(project="OCT-DL", config=default_config):
-        config = wandb.config
-        experiment = Experiment(config)
-        experiment.run()
+    vgg19_config = default_config
+    vgg19_config.model_name = 'vgg19_nominal'
+    with wandb.init(project="OCT-DL", config=vgg19_config):
+        runner(wandb.config)
+
+    resnet_config = default_config
+    resnet_config.model_name = 'resnet18_nominal'
+    with wandb.init(project="OCT-DL", config=resnet_config):
+        runner(wandb.config)
 
 
 if __name__ == '__main__':

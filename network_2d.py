@@ -22,6 +22,8 @@ def get_model_and_optim(model_name, pretrained=True, num_class=2, lr=1e-4, load_
     if model_type in ['vgg19', 'vgg11']:
         model = getattr(torchvision.models, model_type)(pretrained=pretrained)
         model.classifier[-1] = Linear(in_features=4096, out_features=num_class, bias=True)
+    elif model_type in ['resnet18']:
+        model = torchvision.models.resnet18(num_classes=num_class, pretrained=pretrained)
     else:
         raise NotImplementedError
     setattr(model, "name", model_name)

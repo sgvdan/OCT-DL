@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import random
 from torch.utils.data import Dataset
@@ -7,11 +8,27 @@ from oct_converter.readers import E2E
 from tqdm import tqdm
 import pickle
 import math
-import util
-import wandb
 from torchvision import transforms
 
 LABELS = {'HEALTHY': torch.tensor(0), 'SICK': torch.tensor(1)}
+
+tomograms_train_transformation = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Resize((496, 1024)),
+    transforms.Normalize(mean=[10.01453], std=[21.36284])
+])
+
+tomograms_validation_transformation = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Resize((496, 1024)),
+    transforms.Normalize(mean=[10.53055], std=[21.35372])
+])
+
+tomograms_test_transformation = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Resize((496, 1024)),
+    transforms.Normalize(mean=[10.35467], std=[18.61051])  # calculated by util.get_dataset_stats
+])
 
 
 class Cache:
@@ -49,6 +66,9 @@ class Cache:
         :param idx: idx of data
         :return: returns the data stored in cache's idx
         """
+
+        assert idx < len(self)
+
         with open(self.cache_fs[idx], 'rb') as file:
             data = pickle.load(file)
 
@@ -100,12 +120,32 @@ class PartialCache:
         return len(self.lut)
 
 
+class DatasetIterator:
+    def __init__(self, dataset):
+        self.dataset = dataset
+        self.curr_idx = 0
+
+    def __iter__(self):
+        self.curr_idx = 0
+        return self
+
+    def __next__(self):
+        if self.curr_idx == len(self.dataset):
+            raise StopIteration
+
+        self.curr_idx += 1
+        return self.dataset[self.curr_idx - 1]
+
+
 class E2EVolumeGenerator(Dataset):
     def __init__(self, cache):
         self.cache = cache
 
     def get_labels(self):
         return self.cache.get_labels()
+
+    def __iter__(self):
+        return DatasetIterator(self)
 
     def __len__(self):
         return len(self.cache)
@@ -115,17 +155,28 @@ class E2EVolumeGenerator(Dataset):
 
 
 class BScansGenerator(Dataset):
-    def __init__(self, cache):
+    def __init__(self, cache, transformations=None):
         self.cache = cache
+        self.transformations = transformations
 
     def get_labels(self):
         return self.cache.get_labels()
+
+    def __iter__(self):
+        return DatasetIterator(self)
 
     def __len__(self):
         return len(self.cache)
 
     def __getitem__(self, idx):
-        return self.cache[idx]
+        tomogram, *other = self.cache[idx]
+        if self.transformations is not None:
+            try:
+                tomogram = self.transformations(tomogram)
+            except Exception as e:
+                print(e)
+
+        return tomogram.expand(3, -1, -1), *other
 
 
 def random_split_cache(cache, breakdown):
@@ -151,7 +202,7 @@ def random_split_cache(cache, breakdown):
     return caches
 
 
-def build_volume_cache(cache, path, label, config):
+def build_volume_cache(cache, path, label):
     """
 
     :param cache:
@@ -161,26 +212,20 @@ def build_volume_cache(cache, path, label, config):
     :param config:
     :return:
     """
-    transformations = transforms.Resize(config.input_size)
-
     counter = 0
     for sample in tqdm(list(Path(path).rglob("*.E2E"))):
         if sample.is_file():
             for volume in E2E(sample).read_oct_volume():
                 try:
-                    tensored_volume = transformations(torch.tensor(volume.volume))
-                    cache.append((tensored_volume, label))
+                    cache.append((volume.volume, label))
                     counter += 1
                 except Exception as ex:
                     print("Ignored volume {0} in sample {1}. An exception of type {2} occurred. \
                                Arguments:\n{1!r}".format(volume.patient_id, sample, type(ex).__name__, ex.args))
                     continue
 
-                if counter >= config.dataset_limit:
-                    return
 
-
-def buildup_tomograms_cache(cache, path, label, config):
+def build_tomograms_cache(cache, path, label):
     """
     :param cache:
     :param path:
@@ -188,8 +233,6 @@ def buildup_tomograms_cache(cache, path, label, config):
     :param transformations:
     :return:
     """
-
-    transformations = transforms.Resize(config.input_size)
 
     counter = 0
     for sample in tqdm(list(Path(path).rglob("*.E2E"))):
@@ -200,20 +243,20 @@ def buildup_tomograms_cache(cache, path, label, config):
                 start = max(0, math.ceil(tomograms_count/2) - 1)
                 end = min(math.ceil(tomograms_count/2) + 4, tomograms_count)  # python rules: EXCLUDING last one
 
+                # Ignore volumes with 0-size
+                validity = [isinstance(volume.volume[idx], np.ndarray) for idx in range(start, end)]
+                if not all(validity):
+                    continue
+
                 # Save each tomogram to cache
                 for idx in range(start, end):
                     try:
-                        # TODO: Incorporate all transformations to 'transformations'
-                        tomogram = transformations(torch.tensor(volume.volume[idx]).unsqueeze(0).expand(3, -1, -1))
-                        cache.append((tomogram, volume.patient_id, label))
+                        cache.append((volume.volume[idx], label))
                         counter += 1
                     except Exception as ex:
                         print("Ignored volume {0} in sample {1}. An exception of type {2} occurred. \
                                Arguments:\n{1!r}".format(idx, sample, type(ex).__name__, ex.args))
                         continue
-
-                    if counter >= config.dataset_limit:
-                        return
 
 
 def make_weights_for_balanced_classes(dataset, classes):

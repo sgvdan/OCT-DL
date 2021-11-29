@@ -1,8 +1,8 @@
-from torch.autograd import backward
+import numpy as np
 import wandb
 import data
 from tqdm import tqdm
-from itertools import cycle
+import numpy
 import os
 import pickle
 import torch
@@ -22,10 +22,9 @@ def get_best_models_dict():
 
 
 def update_best_models(model, optimizer, model_acc, best_models_dict):
-    print("Best model found!!", "Model: {0}, Accuracy: {1}".format(model.name, model_acc))
     # update dict
     best_models_dict[model.name] = model_acc
-    with open(BEST_MODELS_DICT_PATH, "wb") as f:
+    with open(BEST_MODELS_DICT_PATH, "wb+") as f:
         pickle.dump(best_models_dict, f)
     # update model
     best_model_path = os.path.join(MODELS_DIR, model.name + ".pth")
@@ -38,7 +37,9 @@ def update_best_models(model, optimizer, model_acc, best_models_dict):
 def train(model, criterion, optimizer, train_loader, validation_loader, epochs, device):
     for epoch in tqdm(range(epochs)):
         # Train
-        running_train_loss, running_train_accuracy = 0.0, 0.0
+        running_train_loss = numpy.zeros(1)
+        running_train_accuracy = numpy.zeros(len(data.LABELS))
+
         for train_images, train_labels in train_loader:
             loss, accuracy = train_loop(model=model, criterion=criterion, optimizer=optimizer, device=device,
                                         images=train_images, labels=train_labels, mode='train')
@@ -46,17 +47,34 @@ def train(model, criterion, optimizer, train_loader, validation_loader, epochs, 
             running_train_loss += loss
             running_train_accuracy += accuracy
         wandb.log({'Train/loss': running_train_loss/len(train_loader),
-                   'Train/accuracy': running_train_accuracy/len(train_loader),
-                   'epoch': epoch})
+                   'Train/epoch': epoch})
+
+        for idx, label_key in enumerate(data.LABELS.keys()):
+            wandb.log({'Train/accuracy/{}'.format(label_key): running_train_accuracy[idx]/len(train_loader)})
 
         # Validate
-        running_validation_accuracy = 0.0
-        for validation_images, validation_labels in validation_loader:
-            _, accuracy = train_loop(model=model, criterion=criterion, optimizer=optimizer, device=device,
-                                     images=validation_images, labels=validation_labels, mode='eval')
-            running_validation_accuracy += accuracy
-        wandb.log({'Validation/accuracy': running_validation_accuracy/len(validation_loader),
-                   'epoch': epoch})
+        avg_accuracy = np.average(evaluate(model, validation_loader, 'Validation', device=device))
+
+        # Update best models if needed
+        best_models_dict = get_best_models_dict()
+        if model.name not in best_models_dict or avg_accuracy > best_models_dict[model.name]:
+            print("Best model found!", "Model: {0}, Avg. Accuracy: {1}".format(model.name, avg_accuracy))
+            update_best_models(model=model, optimizer=optimizer, model_acc=avg_accuracy,
+                               best_models_dict=best_models_dict)
+
+
+def evaluate(model, dataset_loader, title, device):
+    running_validation_accuracy = numpy.zeros(len(data.LABELS))
+    for images, labels in dataset_loader:
+        _, accuracy = train_loop(model=model, criterion=None, optimizer=None, device=device,
+                                 images=images, labels=labels, mode='eval')
+        running_validation_accuracy += accuracy
+
+    total_accuracy = running_validation_accuracy / len(dataset_loader)
+    for idx, label_key in enumerate(data.LABELS.keys()):
+        wandb.log({'{title}/Accuracy/{label_key}'.format(title=title, label_key=label_key): total_accuracy[idx]})
+
+    return total_accuracy
 
 
 def train_loop(model, criterion, optimizer, device, images, labels, mode):
@@ -73,7 +91,7 @@ def train_loop(model, criterion, optimizer, device, images, labels, mode):
     pred_scores = model(images)
 
     # Calculate the loss & accuracy
-    accuracy = calc_accuracy(pred_scores, labels, specific_label=None)
+    accuracy = numpy.array([calc_accuracy(pred_scores, labels, specific_label=label) for label in data.LABELS.values()])
     loss_value = 0
 
     if mode == "train":
