@@ -40,6 +40,8 @@ def train(model, criterion, optimizer, train_loader, validation_loader, epochs, 
         running_train_loss = numpy.zeros(1)
         running_train_accuracy = numpy.zeros(len(data.LABELS))
 
+        # TODO: SORT OUT THE CODE SO IT WILL BE POSSIBLE TO GO BY WITH A LIST?
+
         for train_images, train_labels in train_loader:
             loss, accuracy = train_loop(model=model, criterion=criterion, optimizer=optimizer, device=device,
                                         images=train_images, labels=train_labels, mode='train')

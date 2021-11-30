@@ -1,3 +1,4 @@
+import numpy
 import numpy as np
 import torch
 import random
@@ -12,21 +13,36 @@ from torchvision import transforms
 
 LABELS = {'HEALTHY': torch.tensor(0), 'SICK': torch.tensor(1)}
 
+
 tomograms_train_transformation = transforms.Compose([
     transforms.ToTensor(),
-    transforms.Resize((496, 1024)),
+    transforms.Resize((496, 1024)),  # TODO: Change this to point to config.input_size
     transforms.Normalize(mean=[10.01453], std=[21.36284])
 ])
-
 tomograms_validation_transformation = transforms.Compose([
     transforms.ToTensor(),
-    transforms.Resize((496, 1024)),
+    transforms.Resize((496, 1024)),  # TODO: Change this to point to config.input_size
     transforms.Normalize(mean=[10.53055], std=[21.35372])
 ])
-
 tomograms_test_transformation = transforms.Compose([
     transforms.ToTensor(),
-    transforms.Resize((496, 1024)),
+    transforms.Resize((496, 1024)),  # TODO: Change this to point to config.input_size
+    transforms.Normalize(mean=[10.35467], std=[18.61051])  # calculated by util.get_dataset_stats
+])
+
+volume_train_transformation = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Resize((496, 1024)),  # TODO: Change this to point to config.input_size
+    transforms.Normalize(mean=[10.01453], std=[21.36284])
+])
+volume_validation_transformation = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Resize((496, 1024)),  # TODO: Change this to point to config.input_size
+    transforms.Normalize(mean=[10.53055], std=[21.35372])
+])
+volume_test_transformation = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Resize((496, 1024)),  # TODO: Change this to point to config.input_size
     transforms.Normalize(mean=[10.35467], std=[18.61051])  # calculated by util.get_dataset_stats
 ])
 
@@ -138,8 +154,9 @@ class DatasetIterator:
 
 
 class E2EVolumeGenerator(Dataset):
-    def __init__(self, cache):
+    def __init__(self, cache, transformations=None):
         self.cache = cache
+        self.transformations = transformations
 
     def get_labels(self):
         return self.cache.get_labels()
@@ -151,7 +168,11 @@ class E2EVolumeGenerator(Dataset):
         return len(self.cache)
 
     def __getitem__(self, idx):
-        return self.cache[idx]
+        volume, *other = self.cache[idx]
+        if self.transformations is not None:
+            volume = self.transformations(volume)
+
+        return volume, *other
 
 
 class BScansGenerator(Dataset):
@@ -171,17 +192,13 @@ class BScansGenerator(Dataset):
     def __getitem__(self, idx):
         tomogram, *other = self.cache[idx]
         if self.transformations is not None:
-            try:
-                tomogram = self.transformations(tomogram)
-            except Exception as e:
-                print(e)
+            tomogram = self.transformations(tomogram)
 
         return tomogram.expand(3, -1, -1), *other
 
 
 def random_split_cache(cache, breakdown):
     """
-
     :param cache: cache to split
     :param breakdown: list of fractions to breakdown the cache according to
     :return: list of caches, generated from input *cache* according to *breakdown*
@@ -208,20 +225,24 @@ def build_volume_cache(cache, path, label):
     :param cache:
     :param path:
     :param label:
-    :param limit:
-    :param config:
     :return:
     """
     counter = 0
     for sample in tqdm(list(Path(path).rglob("*.E2E"))):
         if sample.is_file():
-            for volume in E2E(sample).read_oct_volume():
+            for scan in E2E(sample).read_oct_volume():
+                # Ignore volumes with 0-size
+                validity = [isinstance(tomogram, np.ndarray) for tomogram in scan.volume]
+                if not all(validity):
+                    continue
+
                 try:
-                    cache.append((volume.volume, label))
+                    volume = numpy.moveaxis(scan.volume, 0, 2)  # Works best with Pytorch' transformation
+                    cache.append((volume, label))
                     counter += 1
                 except Exception as ex:
                     print("Ignored volume {0} in sample {1}. An exception of type {2} occurred. \
-                               Arguments:\n{1!r}".format(volume.patient_id, sample, type(ex).__name__, ex.args))
+                               Arguments:\n{1!r}".format(scan.patient_id, sample, type(ex).__name__, ex.args))
                     continue
 
 
@@ -230,7 +251,6 @@ def build_tomograms_cache(cache, path, label):
     :param cache:
     :param path:
     :param label:
-    :param transformations:
     :return:
     """
 
@@ -280,3 +300,10 @@ def make_weights_for_balanced_classes(dataset, classes):
         weights[idx] = weight_per_class[int(label)]
 
     return torch.FloatTensor(weights)
+
+
+def variable_size_collate(batch):
+    data = [volume for volume, _ in batch]
+    labels = [label for _, label in batch]
+    labels = torch.LongTensor(labels)
+    return [data, labels]
