@@ -49,7 +49,7 @@ class E2ESetNetwork(nn.Module):
     def forward(self, x):
         # TODO: SORT OUT THE DIMENSIONS SO IT WILL BE POSSIBLE TO DO IT WITH BxMxHxW
         batch_size, slices_num, channels, height, width = x.shape
-        x = x.view(batch_size * slices_num, 3, height, width)
+        x = x.view(batch_size * slices_num, channels, height, width)
 
         if x.shape[0] > 100:  # Cuda & ResNet are having trouble with long vectors, so split
             split = torch.split(x, 100)

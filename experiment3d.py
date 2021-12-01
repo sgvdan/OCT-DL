@@ -34,6 +34,7 @@ class Experiment:
         self.backbone, _ = get_model_and_optim(model_name=self.config.model_name, lr=self.config.lr,
                                                device=self.config.device, load_best_model=True, pretrained=False)
         self.model = E2ESetNetwork(self.backbone, 1024, 512, len(data.LABELS)).cuda()
+        self.model.name = '{}_deepset'.format(self.config.model_name)  # TODO: Make this nicer!
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.lr)
 
     def buildup_data(self):
@@ -72,7 +73,7 @@ class Experiment:
 
     def run(self):
         self.train_model()
-        # load_best_state(self.model, self.optimizer)  # Model Evaluation is performed on best-validation model
+        load_best_state(self.model, self.optimizer)  # Model Evaluation is performed on best-validation model
         accuracy = self.eval_model()
         print("Model's accuracy: {}".format(accuracy), flush=True)
 
