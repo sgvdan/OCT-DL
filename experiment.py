@@ -92,14 +92,7 @@ def runner(config):
 
 
 def main():
-    vgg19_config = default_config
-    vgg19_config.model_name = 'vgg19_nominal'
-    with wandb.init(project="OCT-DL", config=vgg19_config):
-        runner(wandb.config)
-
-    resnet_config = default_config
-    resnet_config.model_name = 'resnet18_nominal'
-    with wandb.init(project="OCT-DL", config=resnet_config):
+    with wandb.init(project="OCT-DL", config=default_config):
         runner(wandb.config)
 
 

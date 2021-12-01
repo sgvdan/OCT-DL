@@ -12,7 +12,7 @@ default_config = dot_dict({'dataset_control_path': 'Data/control',
                   'model_name': 'resnet18_nominal',
                   'epochs': 7,
                   'lr': 1e-4,
-                  'batch_size': 30,
+                  'batch_size': 1,
 
                   'device': 'cuda',
                   })

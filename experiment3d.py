@@ -21,8 +21,8 @@ class Experiment:
         assert config is not None
 
         # Fix randomness
-        torch.manual_seed(0)
-        random.seed(0)
+        # torch.manual_seed(0)
+        # random.seed(0)
 
         self.config = config
 
@@ -33,7 +33,7 @@ class Experiment:
         self.criterion = torch.nn.functional.cross_entropy
         self.backbone, _ = get_model_and_optim(model_name=self.config.model_name, lr=self.config.lr,
                                                device=self.config.device, load_best_model=True, pretrained=False)
-        self.model = E2ESetNetwork(self.backbone, 0, 0, len(data.LABELS))
+        self.model = E2ESetNetwork(self.backbone, 1024, 512, len(data.LABELS)).cuda()
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.lr)
 
     def buildup_data(self):
@@ -72,7 +72,7 @@ class Experiment:
 
     def run(self):
         self.train_model()
-        load_best_state(self.model, self.optimizer)  # Model Evaluation is performed on best-validation model
+        # load_best_state(self.model, self.optimizer)  # Model Evaluation is performed on best-validation model
         accuracy = self.eval_model()
         print("Model's accuracy: {}".format(accuracy), flush=True)
 
@@ -94,9 +94,8 @@ def runner(config):
 
 
 def main():
-    # with wandb.init(project="OCT-DL", config=default_config):
-    #     runner(wandb.config)
-    runner(default_config)
+    with wandb.init(project="OCT-DL", config=default_config):
+        runner(wandb.config)
 
 
 if __name__ == '__main__':

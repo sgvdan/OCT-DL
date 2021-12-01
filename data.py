@@ -172,6 +172,7 @@ class E2EVolumeGenerator(Dataset):
         if self.transformations is not None:
             volume = self.transformations(volume)
 
+        volume = volume.unsqueeze(dim=1).expand(-1, 3, -1, -1)
         return volume, *other
 
 
